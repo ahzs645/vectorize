@@ -1,102 +1,202 @@
-import { useState } from 'react';
-import { Box, Button, Typography, Paper, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Box, Button, Typography, Paper, TextField, CircularProgress, Tooltip, IconButton } from '@mui/material';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
-import ShareIcon from '@mui/icons-material/Share';
-import LinkIcon from '@mui/icons-material/Link';
 
 const Export = () => {
   const navigate = useNavigate();
-  const [format, setFormat] = useState('svg');
+  const location = useLocation();
 
-  const handleFormatChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setFormat(event.target.value);
+  const [svgToExport, setSvgToExport] = useState<string | null>(null);
+  const [widthMm, setWidthMm] = useState<number | undefined>(undefined);
+  const [heightMm, setHeightMm] = useState<number | undefined>(undefined);
+  const [fileName, setFileName] = useState<string>('trace_export');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    if (location.state) {
+      const {
+        svgString: newSvgString,
+        finalWidthMm, // Renamed from Trace/Preview page
+        finalHeightMm, // Renamed from Trace/Preview page
+      } = location.state as { svgString?: string; finalWidthMm?: number; finalHeightMm?: number };
+
+      if (newSvgString) {
+        setSvgToExport(newSvgString);
+        setWidthMm(finalWidthMm);
+        setHeightMm(finalHeightMm);
+        setError(null);
+      } else {
+        setError("SVG data not found. Please go back to the preview page and try again.");
+        console.error("SVG string not found in location state:", location.state);
+      }
+    } else {
+      setError("No data received. Please generate an SVG from the preview page first.");
+      console.error("Location state is null or undefined.");
+    }
+    setIsLoading(false);
+  }, [location.state]);
+
+  const handleFileNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFileName(event.target.value);
   };
+
+  const handleDownload = () => {
+    if (!svgToExport || !fileName.trim()) {
+      setError("SVG content is missing or filename is empty.");
+      return;
+    }
+
+    const blob = new Blob([svgToExport], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fileName.trim()}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+  
+  const handleBackToPreview = () => {
+    // Navigate back, passing the current SVG data in case user wants to re-preview
+    navigate('/preview', { 
+        state: { 
+            svgString: svgToExport, 
+            finalWidthMm: widthMm, 
+            finalHeightMm: heightMm 
+        } 
+    });
+  };
+
 
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'grey.100' }}>
       {/* Header */}
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, bgcolor: 'white' }}>
+      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, bgcolor: 'white', boxShadow: 1 }}>
         <Button
           startIcon={<ArrowBackIcon />}
-          onClick={() => navigate('/preview')}
+          onClick={handleBackToPreview}
         >
-          Back
+          Back to Preview
         </Button>
         <Typography variant="h6" sx={{ flex: 1 }}>
-          Export Vector
+          Export SVG
         </Typography>
       </Box>
 
       {/* Main Content */}
-      <Box sx={{ flex: 1, display: 'flex', gap: 2, p: 2, overflow: 'hidden' }}>
-        {/* Export Options */}
+      <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', p: 2 }}>
         <Paper
           elevation={3}
           sx={{
-            flex: 1,
             p: 3,
+            width: '100%',
+            maxWidth: 600,
             display: 'flex',
             flexDirection: 'column',
             gap: 3,
           }}
         >
-          <FormControl component="fieldset">
-            <FormLabel component="legend">Export Format</FormLabel>
-            <RadioGroup
-              value={format}
-              onChange={handleFormatChange}
-            >
-              <FormControlLabel value="svg" control={<Radio />} label="SVG" />
-              <FormControlLabel value="pdf" control={<Radio />} label="PDF" />
-              <FormControlLabel value="png" control={<Radio />} label="PNG" />
-            </RadioGroup>
-          </FormControl>
+          {isLoading && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', my: 4 }}>
+              <CircularProgress />
+              <Typography sx={{ mt: 2 }}>Loading export page...</Typography>
+            </Box>
+          )}
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Button
-              variant="contained"
-              startIcon={<DownloadIcon />}
-              fullWidth
-            >
-              Download {format.toUpperCase()}
-            </Button>
+          {error && !isLoading && (
+            <Box sx={{ textAlign: 'center', my: 4 }}>
+              <Typography color="error" variant="h6">Export Error</Typography>
+              <Typography color="error" sx={{ my: 2 }}>{error}</Typography>
+              <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={handleBackToPreview}>
+                Go Back to Preview
+              </Button>
+            </Box>
+          )}
 
-            <Button
-              variant="outlined"
-              startIcon={<ShareIcon />}
-              fullWidth
-            >
-              Share via Email
-            </Button>
+          {!isLoading && !error && svgToExport && (
+            <>
+              <Typography variant="h5" component="h2" gutterBottom>
+                Download Your SVG
+              </Typography>
 
-            <Button
-              variant="outlined"
-              startIcon={<LinkIcon />}
-              fullWidth
-            >
-              Copy Share Link
-            </Button>
-          </Box>
-        </Paper>
+              {(widthMm !== undefined || heightMm !== undefined) && (
+                <Box sx={{border: '1px solid #e0e0e0', p:1.5, borderRadius: 1, background: 'grey.50'}}>
+                    <Typography variant="subtitle1" gutterBottom>Approximate Dimensions:</Typography>
+                    {widthMm !== undefined && <Typography variant="body2">Width: {widthMm.toFixed(1)} mm</Typography>}
+                    {heightMm !== undefined && <Typography variant="body2">Height: {heightMm.toFixed(1)} mm</Typography>}
+                    {(widthMm === undefined && heightMm === undefined) && <Typography variant="caption" color="text.secondary">Physical dimensions not available.</Typography>}
+                </Box>
+              )}
 
-        {/* Preview */}
-        <Paper
-          elevation={3}
-          sx={{
-            width: 400,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: 'white',
-          }}
-        >
-          <Typography color="text.secondary">Preview</Typography>
+              <TextField
+                label="Filename"
+                variant="outlined"
+                value={fileName}
+                onChange={handleFileNameChange}
+                fullWidth
+                helperText="Enter the desired filename (without .svg extension)."
+                InputProps={{
+                  endAdornment: <Typography sx={{color: 'text.secondary'}}>.svg</Typography>,
+                }}
+              />
+              
+              <Button
+                variant="contained"
+                startIcon={<DownloadIcon />}
+                fullWidth
+                onClick={handleDownload}
+                disabled={!svgToExport || !fileName.trim()}
+                size="large"
+                sx={{ py: 1.5 }}
+              >
+                Download SVG
+              </Button>
+
+              <Typography variant="subtitle2" sx={{ mt: 2, mb:1 }}>SVG Preview:</Typography>
+              <Box
+                sx={{
+                  border: '1px solid #ccc',
+                  borderRadius: 1,
+                  p: 1,
+                  maxHeight: 300,
+                  overflow: 'auto',
+                  background: `
+                    linear-gradient(45deg, #eee 25%, transparent 25%), 
+                    linear-gradient(-45deg, #eee 25%, transparent 25%),
+                    linear-gradient(45deg, transparent 75%, #eee 75%),
+                    linear-gradient(-45deg, transparent 75%, #eee 75%)`,
+                  backgroundSize: '20px 20px',
+                  backgroundColor: 'white'
+                }}
+              >
+                <Box
+                  dangerouslySetInnerHTML={{ __html: svgToExport }}
+                  sx={{
+                    '& svg': {
+                      maxWidth: '100%',
+                      maxHeight: '280px', // Limit height within the preview box
+                      display: 'block',
+                      margin: 'auto',
+                    },
+                  }}
+                />
+              </Box>
+            </>
+          )}
+           {!isLoading && !error && !svgToExport && (
+             <Typography color="text.secondary" sx={{textAlign: 'center', my: 4}}>
+                No SVG data available to export. Please go back to generate an SVG.
+             </Typography>
+          )}
         </Paper>
       </Box>
     </Box>
   );
 };
 
-export default Export; 
+export default Export;
